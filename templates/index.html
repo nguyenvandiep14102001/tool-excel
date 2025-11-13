@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Excel Tool</h1>
+        
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="openTab('compare-tab')">🔍 So sánh 2 File Excel</button>
+            <button class="tab-button" onclick="openTab('join-tab')">🔗 Join 2 File Excel</button>
+            <button class="tab-button" onclick="openTab('merge-tab')">🔄 Gộp Cột Excel</button>
+            <button class="tab-button" onclick="openTab('split-tab')">📊 Tách Dòng Excel</button>
+            <button class="tab-button" onclick="openTab('duplicate-tab')">🎯 Tìm Trùng Lặp</button>
+        </div>
+
+        <!-- Compare Tab -->
+        <div id="compare-tab" class="tab-content active">
+            <!-- File Upload Section for Compare -->
+            <div class="section">
+                <h2>1. Tải lên Files Excel</h2>
+                <div class="file-upload">
+                    <div class="upload-group">
+                        <label>File Excel 1:</label>
+                        <input type="file" id="file1" accept=".xlsx,.xls">
+                        <button onclick="uploadFile(1)">Tải lên</button>
+                        <div id="file1-info" class="file-info"></div>
+                    </div>
+                    <div class="upload-group">
+                        <label>File Excel 2:</label>
+                        <input type="file" id="file2" accept=".xlsx,.xls">
+                        <button onclick="uploadFile(2)">Tải lên</button>
+                        <div id="file2-info" class="file-info"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>2. So sánh Files</h2>
+                <div class="feature">
+                    <div class="option-group">
+                        <label><input type="radio" name="compare_type" value="full_row" checked> So sánh toàn bộ dòng</label>
+                        <label><input type="radio" name="compare_type" value="specific_columns"> So sánh theo cột cụ thể</label>
+                    </div>
+                    
+                    <div id="column-selection" class="column-selection" style="display: none;">
+                        <div class="column-group">
+                            <label>File 1 Column:</label>
+                            <select id="col1-select"></select>
+                        </div>
+                        <div class="column-group">
+                            <label>File 2 Column:</label>
+                            <select id="col2-select"></select>
+                        </div>
+                    </div>
+                    
+                    <button onclick="compareFiles()" class="btn-primary">Thực hiện So sánh</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Join Tab -->
+        <div id="join-tab" class="tab-content">
+            <!-- File Upload Section for Join -->
+            <div class="section">
+                <h2>1. Tải lên Files Excel</h2>
+                <div class="file-upload">
+                    <div class="upload-group">
+                        <label>File Excel 1:</label>
+                        <input type="file" id="file1-join" accept=".xlsx,.xls">
+                        <button onclick="uploadFile(1, 'join')">Tải lên</button>
+                        <div id="file1-join-info" class="file-info"></div>
+                    </div>
+                    <div class="upload-group">
+                        <label>File Excel 2:</label>
+                        <input type="file" id="file2-join" accept=".xlsx,.xls">
+                        <button onclick="uploadFile(2, 'join')">Tải lên</button>
+                        <div id="file2-join-info" class="file-info"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>2. Join Files</h2>
+                <div class="feature">
+                    <div class="join-instructions">
+                        <p>Chọn các cột tương ứng từ 2 file để thực hiện join.</p>
+                    </div>
+                    <button onclick="showJoinColumnSelection()" class="btn-primary">Chọn Cột và Thực hiện Join</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Merge Columns Tab -->
+        <div id="merge-tab" class="tab-content">
+            <div class="section">
+                <h2>1. Tải lên File Excel để Gộp Cột</h2>
+                <div class="feature">
+                    <div class="merge-instructions">
+                        <p><strong>Hướng dẫn:</strong> Chọn file Excel và cấu hình các cột cần gộp. Có thể gộp nhiều nhóm cột cùng lúc.</p>
+                    </div>
+                    
+                    <div class="file-selection">
+                        <div class="upload-group">
+                            <label>File Excel:</label>
+                            <input type="file" id="merge-file" accept=".xlsx,.xls">
+                            <button onclick="uploadMergeFile()">Tải lên File</button>
+                            <div id="merge-file-info" class="file-info"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="merge-configuration" style="display: none;">
+                        <h2>2. Cấu hình Gộp Cột</h2>
+                        <div id="merge-configs" class="merge-configs">
+                            <!-- Dynamic merge configurations will be added here -->
+                        </div>
+                        
+                        <div class="merge-actions">
+                            <button onclick="addMergeConfig()" class="btn-secondary">➕ Thêm Nhóm Gộp</button>
+                            <button onclick="previewMerge()" class="btn-secondary">👁️ Xem Trước</button>
+                            <button onclick="performMerge()" class="btn-primary">✅ Thực hiện Gộp Cột</button>
+                        </div>
+                        
+                        <div id="merge-preview" class="merge-preview">
+                            <!-- Preview results will be shown here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Split Rows Tab -->
+        <div id="split-tab" class="tab-content">
+            <div class="section">
+                <h2>1. Tải lên File Excel để Tách Dòng</h2>
+                <div class="feature">
+                    <div class="split-instructions">
+                        <p><strong>Hướng dẫn:</strong> Tách nhiều cột thành nhiều dòng (Unpivot). Ví dụ: 1 sinh viên có nhiều năm học → mỗi năm học thành 1 dòng.</p>
+                        <ul>
+                            <li><strong>Cột định danh:</strong> Các cột giữ nguyên (MSSV, Họ tên...)</li>
+                            <li><strong>Cột giá trị:</strong> Các cột sẽ được tách thành dòng (Năm học 2020, 2021, 2022...)</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="file-selection">
+                        <div class="upload-group">
+                            <label>File Excel:</label>
+                            <input type="file" id="split-file" accept=".xlsx,.xls">
+                            <button onclick="uploadSplitFile()">Tải lên File</button>
+                            <div id="split-file-info" class="file-info"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="split-configuration" style="display: none;">
+                        <h2>2. Cấu hình Tách Dòng</h2>
+                        
+                        <div class="split-config">
+                            <div class="config-group">
+                                <h3>📌 Cột Định Danh (Giữ nguyên)</h3>
+                                <p><small>Các cột dùng để nhận diện từng dòng (MSSV, Họ tên...)</small></p>
+                                <div class="columns-selection" id="id-columns-selection">
+                                    <!-- ID columns will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <div class="config-group">
+                                <h3>📊 Cột Giá Trị (Tách thành dòng)</h3>
+                                <p><small>Các cột sẽ được tách thành nhiều dòng (Năm học, Môn học...)</small></p>
+                                <div class="columns-selection" id="value-columns-selection">
+                                    <!-- Value columns will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <div class="naming-config">
+                                <h3>🏷️ Đặt Tên Cột Mới</h3>
+                                <div class="name-inputs">
+                                    <div class="input-group">
+                                        <label>Tên cột biến:</label>
+                                        <input type="text" id="var-name" value="Năm_học" placeholder="Ví dụ: Năm_học, Môn_học">
+                                        <small>Tên cho cột chứa tên các cột cũ</small>
+                                    </div>
+                                    <div class="input-group">
+                                        <label>Tên cột giá trị:</label>
+                                        <input type="text" id="value-name" value="Điểm" placeholder="Ví dụ: Điểm, Giá_trị">
+                                        <small>Tên cho cột chứa giá trị</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="split-actions">
+                            <button onclick="previewSplit()" class="btn-secondary">👁️ Xem Trước</button>
+                            <button onclick="performSplit()" class="btn-primary">✅ Thực hiện Tách Dòng</button>
+                        </div>
+                        
+                        <div id="split-preview" class="split-preview">
+                            <!-- Preview results will be shown here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+                <!-- Duplicate Finder Tab -->
+        <div id="duplicate-tab" class="tab-content">
+            <div class="section">
+                <h2>1. Tải lên File Excel để Tìm Trùng Lặp</h2>
+                <div class="feature">
+                    <div class="duplicate-instructions">
+                        <p><strong>Hướng dẫn:</strong> Tìm kiếm dữ liệu trùng lặp trong file Excel.</p>
+                        <div class="duplicate-options">
+                            <div class="option-card">
+                                <h4>🔍 Tìm giá trị trùng lặp trong cột</h4>
+                                <p>Tìm các giá trị giống nhau trong các cột cụ thể (ví dụ: MSSV, Email...)</p>
+                            </div>
+                            <div class="option-card">
+                                <h4>📋 Tìm dòng trùng lặp hoàn toàn</h4>
+                                <p>Tìm các dòng giống hệt nhau trên tất cả các cột</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="file-selection">
+                        <div class="upload-group">
+                            <label>File Excel:</label>
+                            <input type="file" id="duplicate-file" accept=".xlsx,.xls">
+                            <button onclick="uploadDuplicateFile()">Tải lên File</button>
+                            <div id="duplicate-file-info" class="file-info"></div>
+                        </div>
+                    </div>
+                    
+                    <div id="duplicate-configuration" style="display: none;">
+                        <h2>2. Chọn Loại Kiểm Tra Trùng Lặp</h2>
+                        
+                        <div class="duplicate-methods">
+                            <div class="method-card" id="method-values">
+                                <div class="method-header">
+                                    <h3>🔍 Tìm Giá Trị Trùng Lặp Trong Cột</h3>
+                                    <button onclick="toggleMethod('values')" class="btn-primary">Chọn Phương Pháp Này</button>
+                                </div>
+                                <div class="method-content" id="method-values-content" style="display: none;">
+                                    <p><strong>Chọn các cột cần kiểm tra giá trị trùng lặp:</strong></p>
+                                    <div class="columns-checkbox-group" id="duplicate-value-columns">
+                                        <!-- Columns checkboxes will be populated here -->
+                                    </div>
+                                    <div class="method-actions">
+                                        <button onclick="previewDuplicateValues()" class="btn-secondary">👁️ Xem Trước</button>
+                                        <button onclick="findDuplicateValues()" class="btn-primary">✅ Tìm Giá Trị Trùng Lặp</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="method-card" id="method-rows">
+                                <div class="method-header">
+                                    <h3>📋 Tìm Dòng Trùng Lặp Hoàn Toàn</h3>
+                                    <button onclick="toggleMethod('rows')" class="btn-primary">Chọn Phương Pháp Này</button>
+                                </div>
+                                <div class="method-content" id="method-rows-content" style="display: none;">
+                                    <p><strong>Kiểm tra tất cả các cột để tìm dòng giống hệt nhau:</strong></p>
+                                    <div class="method-info">
+                                        <p>✅ Phương pháp này sẽ kiểm tra tất cả các cột trong file</p>
+                                        <p>✅ Tìm các dòng có dữ liệu giống hệt nhau 100%</p>
+                                        <p>✅ Hiển thị các nhóm dòng trùng lặp</p>
+                                    </div>
+                                    <div class="method-actions">
+                                        <button onclick="findDuplicateRows()" class="btn-primary">✅ Tìm Dòng Trùng Lặp</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="duplicate-preview" class="duplicate-preview">
+                            <!-- Preview results will be shown here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section (Common for all tabs) -->
+        <div class="section">
+            <h2>Kết quả</h2>
+            <div id="results" class="results">
+                <p>Chọn files và thực hiện tính năng để xem kết quả...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Column Selection Modal -->
+    <div id="join-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('join-modal').style.display='none'">&times;</span>
+            <h3>Chọn Cột để Join</h3>
+            <p>Chọn các cặp cột để thực hiện join. Có thể chọn nhiều cặp cột.</p>
+            
+            <div id="modal-columns" class="modal-columns">
+                <!-- Dynamic column pairs will be added here -->
+            </div>
+            
+            <div class="modal-buttons">
+                <button onclick="addJoinColumnPair()" class="btn-secondary">➕ Thêm Cột</button>
+                <button onclick="saveJoinColumns()" class="btn-primary">✅ Thực hiện Join</button>
+                <button onclick="document.getElementById('join-modal').style.display='none'" class="btn-secondary">❌ Hủy</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Separator Selection Modal -->
+    <div id="separator-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('separator-modal').style.display='none'">&times;</span>
+            <h3>Chọn Dấu Phân Cách</h3>
+            <p>Chọn hoặc nhập dấu phân cách để gộp các cột:</p>
+            
+            <div class="separator-options">
+                <label><input type="radio" name="separator" value=" " checked> Khoảng trắng</label>
+                <label><input type="radio" name="separator" value=","> Dấu phẩy (,)</label>
+                <label><input type="radio" name="separator" value="-"> Dấu gạch ngang (-)</label>
+                <label><input type="radio" name="separator" value="_"> Dấu gạch dưới (_)</label>
+                <label><input type="radio" name="separator" value="/"> Dấu gạch chéo (/)</label>
+                <label><input type="radio" name="separator" value="custom"> Tùy chỉnh:</label>
+                <input type="text" id="custom-separator" placeholder="Nhập dấu phân cách" style="margin-left: 20px; padding: 5px;">
+            </div>
+            
+            <div class="modal-buttons">
+                <button onclick="saveSeparator()" class="btn-primary">✅ Chọn</button>
+                <button onclick="document.getElementById('separator-modal').style.display='none'" class="btn-secondary">❌ Hủy</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
