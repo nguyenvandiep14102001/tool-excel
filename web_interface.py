@@ -3,6 +3,7 @@ import os
 from core import FileComparator, FileJoiner, ColumnMerger, RowSplitter, DuplicateFinder, ExcelUtils  
 import tempfile
 import traceback
+import time
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
@@ -199,7 +200,57 @@ def join_files():
     
     except Exception as e:
         return jsonify({'success': False, 'error': f'Join error: {str(e)}'})
-
+    
+@app.route('/api/upload-join', methods=['POST'])
+def upload_join_file():
+    """Upload file specifically for join operations"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'})
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
+        
+        if file and allowed_file(file.filename):
+            # Create unique filename for join
+            safe_filename = "upload_join_" + str(hash(file.filename))[-8:] + "_" + str(hash(str(time.time())))[-8:] + os.path.splitext(file.filename)[1]
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+            file.save(file_path)
+            
+            try:
+                # Get basic file info
+                df = ExcelUtils.read_excel(file_path)
+                file_info = {
+                    'filename': file.filename,
+                    'file_path': file_path,
+                    'rows': len(df),
+                    'columns': [str(col) for col in df.columns],
+                    'file_size': os.path.getsize(file_path)
+                }
+                
+                return jsonify({
+                    'success': True,
+                    'filename': file_info['filename'],
+                    'rows': file_info['rows'],
+                    'columns': file_info['columns'],
+                    'file_path': file_info['file_path'],
+                    'file_info': file_info
+                })
+                
+            except Exception as e:
+                # Clean up on error
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+                return jsonify({'success': False, 'error': f'Không thể đọc file: {str(e)}'})
+        
+        return jsonify({'success': False, 'error': 'Invalid file type'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Upload error: {str(e)}'})
+    
 @app.route('/api/suggest-join-columns', methods=['POST'])
 def suggest_join_columns():
     """Suggest join columns based on common columns"""

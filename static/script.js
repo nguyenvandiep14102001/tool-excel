@@ -1,40 +1,28 @@
-// Global variables for different tabs
+// Global variables for different tabs - FIXED VERSION
 let uploadedFiles = {
     compare: { file1: null, file2: null },
     join: { file1: null, file2: null },
-    merge: { file: null }
+    merge: { file: null },
+    split: { file: null },
+    duplicate: { file: null }
 };
 
 let joinColumns = [];
+let currentSeparator = " ";
+let currentConfigId = null;
+let currentMergeConfigs = [];
+let splitFile = null;
+let duplicateFile = null;
+let currentMethod = null;
 
-// Event listeners
-document.addEventListener('DOMContentLoaded', function() {
-    // Compare type change
-    document.querySelectorAll('input[name="compare_type"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            const columnSelection = document.getElementById('column-selection');
-            columnSelection.style.display = this.value === 'specific_columns' ? 'block' : 'none';
-        });
-    });
+// ========== UPLOAD FUNCTIONS ==========
 
-    // Modal close
-    document.querySelector('.close').addEventListener('click', function() {
-        document.getElementById('join-modal').style.display = 'none';
-    });
-
-    // Close modal when clicking outside
-    window.addEventListener('click', function(event) {
-        const modal = document.getElementById('join-modal');
-        if (event.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
-});
-
-// Upload file for different tabs
-async function uploadFile(fileNumber, tab = 'compare') {
-    const fileInput = document.getElementById(`file${fileNumber}${tab === 'join' ? '-join' : ''}`);
-    const fileInfo = document.getElementById(`file${fileNumber}${tab === 'join' ? '-join' : ''}-info`);
+// Upload for COMPARE tab
+async function uploadCompareFile(fileNumber) {
+    console.log(`Uploading compare file ${fileNumber}`);
+    
+    const fileInput = document.getElementById(`file${fileNumber}`);
+    const fileInfo = document.getElementById(`file${fileNumber}-info`);
     
     if (!fileInput.files[0]) {
         alert('Vui lòng chọn file trước khi tải lên');
@@ -45,6 +33,8 @@ async function uploadFile(fileNumber, tab = 'compare') {
     formData.append('file', fileInput.files[0]);
 
     try {
+        fileInfo.innerHTML = '<div class="loading">🔄 Đang tải lên...</div>';
+
         let response = await fetch('/api/upload', {
             method: 'POST',
             body: formData
@@ -52,37 +42,95 @@ async function uploadFile(fileNumber, tab = 'compare') {
 
         let result = await response.json();
 
+        // If normal upload fails, try simple upload
         if (!result.success) {
-            formData.append('file', fileInput.files[0]);
+            console.log('Normal upload failed, trying simple upload...');
+            
+            const retryFormData = new FormData();
+            retryFormData.append('file', fileInput.files[0]);
+            
             response = await fetch('/api/simple-upload', {
                 method: 'POST',
-                body: formData
+                body: retryFormData
             });
+            
             result = await response.json();
         }
 
         if (result.success) {
-            uploadedFiles[tab][`file${fileNumber}`] = result;
+            uploadedFiles.compare[`file${fileNumber}`] = result;
             fileInfo.innerHTML = `
-                <strong>File:</strong> ${result.filename}<br>
-                <strong>Số dòng:</strong> ${result.rows}<br>
-                <strong>Số cột:</strong> ${result.columns.length}<br>
-                <strong>Columns:</strong> ${result.columns.slice(0, 5).join(', ')}${result.columns.length > 5 ? '...' : ''}
+                <div style="color: green;">
+                    <strong>✅ Upload thành công!</strong><br>
+                    <strong>File:</strong> ${result.filename}<br>
+                    <strong>Số dòng:</strong> ${result.rows}<br>
+                    <strong>Số cột:</strong> ${result.columns.length}<br>
+                    <strong>Các cột:</strong> ${result.columns.slice(0, 5).join(', ')}${result.columns.length > 5 ? '...' : ''}
+                </div>
             `;
             
-            // Update column selects for compare tab
-            if (tab === 'compare') {
-                updateColumnSelects();
-            }
+            // Update column selects for compare
+            updateColumnSelects();
         } else {
-            fileInfo.innerHTML = `<span style="color: red;">Lỗi: ${result.error}</span>`;
+            fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi:</strong> ${result.error}</div>`;
         }
     } catch (error) {
-        fileInfo.innerHTML = `<span style="color: red;">Lỗi kết nối: ${error.message}</span>`;
+        console.error('Upload error:', error);
+        fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi kết nối:</strong> ${error.message}</div>`;
     }
 }
 
-// Update column selection dropdowns
+// Upload for JOIN tab
+async function uploadJoinFile(fileNumber) {
+    console.log(`Uploading join file ${fileNumber}`);
+    
+    const fileInput = document.getElementById(`file${fileNumber}-join`);
+    const fileInfo = document.getElementById(`file${fileNumber}-join-info`);
+    
+    if (!fileInput.files[0]) {
+        alert('Vui lòng chọn file trước khi tải lên');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        fileInfo.innerHTML = '<div class="loading">🔄 Đang tải lên...</div>';
+
+        // Use dedicated join endpoint
+        const response = await fetch('/api/upload-join', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            uploadedFiles.join[`file${fileNumber}`] = result;
+            fileInfo.innerHTML = `
+                <div style="color: green;">
+                    <strong>✅ Upload thành công!</strong><br>
+                    <strong>File:</strong> ${result.filename}<br>
+                    <strong>Số dòng:</strong> ${result.rows}<br>
+                    <strong>Số cột:</strong> ${result.columns.length}<br>
+                    <strong>Các cột:</strong> ${result.columns.slice(0, 5).join(', ')}${result.columns.length > 5 ? '...' : ''}
+                </div>
+            `;
+            
+            console.log(`Join file ${fileNumber} uploaded:`, result);
+        } else {
+            fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi:</strong> ${result.error}</div>`;
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi kết nối:</strong> ${error.message}</div>`;
+    }
+}
+
+// ========== COMPARE FUNCTIONS ==========
+
+// Update column selection dropdowns for compare
 function updateColumnSelects() {
     const col1Select = document.getElementById('col1-select');
     const col2Select = document.getElementById('col2-select');
@@ -91,8 +139,8 @@ function updateColumnSelects() {
     col1Select.innerHTML = '';
     col2Select.innerHTML = '';
     
-    if (uploadedFiles.file1 && uploadedFiles.file1.columns) {
-        uploadedFiles.file1.columns.forEach(col => {
+    if (uploadedFiles.compare.file1 && uploadedFiles.compare.file1.columns) {
+        uploadedFiles.compare.file1.columns.forEach(col => {
             const option = document.createElement('option');
             option.value = col;
             option.textContent = col;
@@ -100,8 +148,8 @@ function updateColumnSelects() {
         });
     }
     
-    if (uploadedFiles.file2 && uploadedFiles.file2.columns) {
-        uploadedFiles.file2.columns.forEach(col => {
+    if (uploadedFiles.compare.file2 && uploadedFiles.compare.file2.columns) {
+        uploadedFiles.compare.file2.columns.forEach(col => {
             const option = document.createElement('option');
             option.value = col;
             option.textContent = col;
@@ -110,27 +158,9 @@ function updateColumnSelects() {
     }
 }
 
-// Update column selection dropdowns
-function updateColumnSelects() {
-    const col1Select = document.getElementById('col1-select');
-    const col2Select = document.getElementById('col2-select');
-    
-    if (uploadedFiles.file1) {
-        col1Select.innerHTML = uploadedFiles.file1.columns.map(col => 
-            `<option value="${col}">${col}</option>`
-        ).join('');
-    }
-    
-    if (uploadedFiles.file2) {
-        col2Select.innerHTML = uploadedFiles.file2.columns.map(col => 
-            `<option value="${col}">${col}</option>`
-        ).join('');
-    }
-}
-
-// Compare files
+// Compare files function
 async function compareFiles() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
+    if (!uploadedFiles.compare.file1 || !uploadedFiles.compare.file2) {
         alert('Vui lòng tải lên cả 2 file trước khi so sánh');
         return;
     }
@@ -140,15 +170,19 @@ async function compareFiles() {
     const col2 = compareType === 'specific_columns' ? document.getElementById('col2-select').value : null;
 
     const data = {
-        file1_path: uploadedFiles.file1.file_path,
-        file2_path: uploadedFiles.file2.file_path,
+        file1_path: uploadedFiles.compare.file1.file_path,
+        file2_path: uploadedFiles.compare.file2.file_path,
         compare_type: compareType,
         col1: col1,
         col2: col2
     };
 
     try {
-        const response = await fetch('/api/compare', {
+        // Show loading
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '<div class="loading">🔄 Đang xử lý...</div>';
+
+        const response = await fetch('/api/compare-detailed', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -157,26 +191,122 @@ async function compareFiles() {
         });
 
         const result = await response.json();
+        console.log('API Response:', result);
         displayResults(result, 'So sánh');
     } catch (error) {
+        console.error('Compare error:', error);
         displayError(error.message);
     }
 }
 
-// Join files function
-async function joinFiles() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
-        alert('Vui lòng tải lên cả 2 file trước khi join');
-        return;
-    }
+// Display results with unmatched rows details
+function displayResults(result, operation) {
+    const resultsDiv = document.getElementById('results');
+    
+    if (result.success) {
+        let html = `<h3>✅ ${operation} Thành Công!</h3>`;
+        html += `<div class="stats">`;
+        
+        const stats = result.stats;
+        html += `<p><strong>📊 Số dòng File 1:</strong> ${stats.file1_rows}</p>`;
+        html += `<p><strong>📊 Số dòng File 2:</strong> ${stats.file2_rows}</p>`;
+        
+        if (stats.matched_rows !== undefined) {
+            html += `<p><strong>✅ Số dòng khớp:</strong> ${stats.matched_rows}</p>`;
+            html += `<p><strong>❌ Số dòng không khớp:</strong> ${stats.unmatched_rows}</p>`;
+            html += `<p><strong>📈 Tỷ lệ khớp:</strong> ${stats.match_percentage}%</p>`;
+        }
+        
+        if (stats.compared_columns) {
+            html += `<p><strong>🔍 Cột so sánh:</strong> ${stats.compared_columns}</p>`;
+        }
 
-    // Show join column selection modal
-    showJoinColumnSelection();
+        console.log('Result data:', result);
+
+        // HIỂN THỊ CÁC DÒNG KHÔNG KHỚP
+        const unmatchedData = result.unmatched_samples || (result.stats && result.stats.unmatched_data);
+        const unmatchedCount = result.unmatched_count || (result.stats && result.stats.unmatched_count) || 0;
+        
+        if (unmatchedData && unmatchedData.length > 0) {
+            console.log('Unmatched data found:', unmatchedData);
+            
+            html += `<div class="unmatched-section">`;
+            html += `<h4>📋 CÁC DÒNG KHÔNG KHỚP (${unmatchedCount} dòng):</h4>`;
+            
+            unmatchedData.forEach((unmatched, index) => {
+                html += `<div class="unmatched-row">`;
+                html += `<h5>🔍 Dòng ${unmatched.excel_row} (Index: ${unmatched.index})</h5>`;
+                html += `<div class="row-data">`;
+                
+                if (unmatched.data) {
+                    Object.entries(unmatched.data).forEach(([key, value]) => {
+                        const isComparedColumn = stats.compared_columns && 
+                                               key === stats.compared_columns.split("'")[1];
+                        
+                        const highlightClass = isComparedColumn ? 'highlight-column' : '';
+                        
+                        html += `<div class="data-field ${highlightClass}">`;
+                        html += `<strong>${key}:</strong> ${value}`;
+                        if (isComparedColumn) {
+                            html += ` <span class="compared-badge">(Cột so sánh)</span>`;
+                        }
+                        html += `</div>`;
+                    });
+                }
+                
+                if (unmatched.compared_value) {
+                    html += `<div class="compared-value">`;
+                    html += `<strong>Giá trị so sánh:</strong> <span class="highlight-value">${unmatched.compared_value}</span>`;
+                    html += `</div>`;
+                }
+                
+                html += `</div></div>`;
+                
+                if (index < unmatchedData.length - 1) {
+                    html += `<hr class="row-divider">`;
+                }
+            });
+            
+            html += `</div>`;
+        } else if (stats.unmatched_rows > 0) {
+            html += `<div class="unmatched-section">`;
+            html += `<h4>📋 CÁC DÒNG KHÔNG KHỚP (${stats.unmatched_rows} dòng):</h4>`;
+            html += `<p>Vị trí dòng trong Excel: ${stats.unmatched_indices ? stats.unmatched_indices.join(', ') : 'Không có thông tin'}</p>`;
+            html += `</div>`;
+        } else {
+            html += `<div class="success-message">`;
+            html += `<p>🎉 Tất cả các dòng đều khớp!</p>`;
+            html += `</div>`;
+        }
+
+        if (stats.note) {
+            html += `<p class="note">📝 ${stats.note}</p>`;
+        }
+        
+        html += `</div>`;
+        
+        if (result.download_url) {
+            html += `<a href="${result.download_url}" class="download-link">📥 Tải xuống File Kết quả</a>`;
+        }
+
+        if (unmatchedCount > 5) {
+            html += `<button onclick="showAllUnmatchedRows()" class="btn-secondary" style="margin-left: 10px; margin-top: 10px;">📊 Xem chi tiết tất cả ${unmatchedCount} dòng không khớp</button>`;
+        }
+        
+        resultsDiv.innerHTML = html;
+    } else {
+        resultsDiv.innerHTML = `<div class="error-message"><h3>❌ Lỗi</h3><p>${result.error}</p></div>`;
+    }
 }
+
+// ========== JOIN FUNCTIONS ==========
 
 // Show join column selection modal
 function showJoinColumnSelection() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
+    console.log('showJoinColumnSelection called');
+    console.log('uploadedFiles.join:', uploadedFiles.join);
+    
+    if (!uploadedFiles.join || !uploadedFiles.join.file1 || !uploadedFiles.join.file2) {
         alert('Vui lòng tải lên cả 2 file trước khi chọn cột join');
         return;
     }
@@ -199,14 +329,14 @@ function addJoinColumnPair(col1 = '', col2 = '') {
     pairDiv.innerHTML = `
         <select class="col1-select">
             <option value="">-- Chọn cột File 1 --</option>
-            ${uploadedFiles.file1.columns.map(col => 
+            ${uploadedFiles.join.file1.columns.map(col => 
                 `<option value="${col}" ${col === col1 ? 'selected' : ''}>${col}</option>`
             ).join('')}
         </select>
         <span>→</span>
         <select class="col2-select">
             <option value="">-- Chọn cột File 2 --</option>
-            ${uploadedFiles.file2.columns.map(col => 
+            ${uploadedFiles.join.file2.columns.map(col => 
                 `<option value="${col}" ${col === col2 ? 'selected' : ''}>${col}</option>`
             ).join('')}
         </select>
@@ -218,7 +348,8 @@ function addJoinColumnPair(col1 = '', col2 = '') {
 
 // Remove join column pair
 function removeJoinColumnPair(button) {
-    if (document.querySelectorAll('.column-pair').length > 1) {
+    const columnPairs = document.querySelectorAll('.column-pair');
+    if (columnPairs.length > 1) {
         button.parentElement.remove();
     } else {
         alert('Cần ít nhất một cặp cột để join');
@@ -244,7 +375,7 @@ async function saveJoinColumns() {
     }
     
     // Close modal
-    document.getElementById('join-modal').style.display = 'none';
+    closeJoinModal();
     
     // Perform the actual join
     await performJoin(joinColumns);
@@ -252,9 +383,17 @@ async function saveJoinColumns() {
 
 // Perform the join operation
 async function performJoin(joinColumns) {
+    console.log('performJoin called with:', joinColumns);
+    console.log('uploadedFiles.join:', uploadedFiles.join);
+    
+    if (!uploadedFiles.join.file1 || !uploadedFiles.join.file2) {
+        alert('Không tìm thấy dữ liệu file');
+        return;
+    }
+
     const data = {
-        file1_path: uploadedFiles.file1.file_path,
-        file2_path: uploadedFiles.file2.file_path,
+        file1_path: uploadedFiles.join.file1.file_path,
+        file2_path: uploadedFiles.join.file2.file_path,
         join_columns: joinColumns
     };
 
@@ -272,6 +411,7 @@ async function performJoin(joinColumns) {
         });
 
         const result = await response.json();
+        console.log('Join result:', result);
         displayJoinResults(result);
     } catch (error) {
         console.error('Join error:', error);
@@ -294,7 +434,6 @@ function displayJoinResults(result) {
         html += `<p><strong>❌ Số dòng không được join:</strong> ${stats.not_joined_rows}</p>`;
         html += `<p><strong>📈 Tỷ lệ join:</strong> ${stats.join_percentage}%</p>`;
         
-        // Hiển thị các cột join
         if (stats.join_columns && stats.join_columns.length > 0) {
             html += `<p><strong>🔗 Các cột join:</strong></p>`;
             html += `<ul>`;
@@ -324,452 +463,7 @@ function displayJoinResults(result) {
     }
 }
 
-// Hiển thị tất cả các dòng không khớp
-function showAllUnmatchedRows() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
-        alert('Vui lòng tải lên cả 2 file trước');
-        return;
-    }
-
-    const compareType = document.querySelector('input[name="compare_type"]:checked').value;
-    const col1 = compareType === 'specific_columns' ? document.getElementById('col1-select').value : null;
-    const col2 = compareType === 'specific_columns' ? document.getElementById('col2-select').value : null;
-
-    const data = {
-        file1_path: uploadedFiles.file1.file_path,
-        file2_path: uploadedFiles.file2.file_path,
-        compare_type: compareType,
-        col1: col1,
-        col2: col2
-    };
-
-    fetch('/api/unmatched-rows', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(result => {
-        if (result.success) {
-            displayUnmatchedDetails(result);
-        } else {
-            alert('Lỗi: ' + result.error);
-        }
-    })
-    .catch(error => {
-        alert('Lỗi kết nối: ' + error.message);
-    });
-}
-
-// Hiển thị chi tiết tất cả các dòng không khớp
-function displayUnmatchedDetails(result) {
-    const resultsDiv = document.getElementById('results');
-    
-    let html = `<h3>📊 Chi tiết các dòng không khớp</h3>`;
-    html += `<p><strong>Tổng số dòng không khớp:</strong> ${result.unmatched_count}</p>`;
-    html += `<p><strong>Tổng dòng file 1:</strong> ${result.file1_rows}</p>`;
-    html += `<p><strong>Tổng dòng file 2:</strong> ${result.file2_rows}</p>`;
-    
-    if (result.unmatched_details && result.unmatched_details.length > 0) {
-        html += `<div class="unmatched-details">`;
-        html += `<table class="unmatched-table">`;
-        html += `<thead><tr><th>Dòng Excel</th><th>Dữ liệu</th></tr></thead>`;
-        html += `<tbody>`;
-        
-        result.unmatched_details.forEach(detail => {
-            html += `<tr>`;
-            html += `<td class="row-number">${detail.excel_row}</td>`;
-            html += `<td class="row-data">`;
-            
-            // Hiển thị tất cả dữ liệu của dòng
-            Object.entries(detail.data).forEach(([key, value]) => {
-                html += `<div><strong>${key}:</strong> ${value}</div>`;
-            });
-            
-            html += `</td>`;
-            html += `</tr>`;
-        });
-        
-        html += `</tbody></table>`;
-        html += `</div>`;
-    } else {
-        html += `<p>Không có dòng nào không khớp.</p>`;
-    }
-    
-    html += `<button onclick="window.history.back()" class="btn-secondary">⬅ Quay lại</button>`;
-    
-    resultsDiv.innerHTML = html;
-}
-
-// Sử dụng API chi tiết cho compare
-async function compareFiles() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
-        alert('Vui lòng tải lên cả 2 file trước khi so sánh');
-        return;
-    }
-
-    const compareType = document.querySelector('input[name="compare_type"]:checked').value;
-    const col1 = compareType === 'specific_columns' ? document.getElementById('col1-select').value : null;
-    const col2 = compareType === 'specific_columns' ? document.getElementById('col2-select').value : null;
-
-    const data = {
-        file1_path: uploadedFiles.file1.file_path,
-        file2_path: uploadedFiles.file2.file_path,
-        compare_type: compareType,
-        col1: col1,
-        col2: col2
-    };
-
-    try {
-        const response = await fetch('/api/compare-detailed', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        });
-
-        const result = await response.json();
-        displayResults(result, 'So sánh');
-    } catch (error) {
-        displayError(error.message);
-    }
-}
-
-// Display results with unmatched rows details - FIXED VERSION
-function displayResults(result, operation) {
-    const resultsDiv = document.getElementById('results');
-    
-    if (result.success) {
-        let html = `<h3>✅ ${operation} Thành Công!</h3>`;
-        html += `<div class="stats">`;
-        
-        const stats = result.stats;
-        html += `<p><strong>📊 Số dòng File 1:</strong> ${stats.file1_rows}</p>`;
-        html += `<p><strong>📊 Số dòng File 2:</strong> ${stats.file2_rows}</p>`;
-        
-        if (stats.matched_rows !== undefined) {
-            html += `<p><strong>✅ Số dòng khớp:</strong> ${stats.matched_rows}</p>`;
-            html += `<p><strong>❌ Số dòng không khớp:</strong> ${stats.unmatched_rows}</p>`;
-            html += `<p><strong>📈 Tỷ lệ khớp:</strong> ${stats.match_percentage}%</p>`;
-        }
-        
-        if (stats.compared_columns) {
-            html += `<p><strong>🔍 Cột so sánh:</strong> ${stats.compared_columns}</p>`;
-        }
-
-        console.log('Result data:', result); // Debug log
-
-        // HIỂN THỊ CÁC DÒNG KHÔNG KHỚP - SỬA LẠI
-        const unmatchedData = result.unmatched_samples || (result.stats && result.stats.unmatched_data);
-        const unmatchedCount = result.unmatched_count || (result.stats && result.stats.unmatched_count) || 0;
-        
-        if (unmatchedData && unmatchedData.length > 0) {
-            console.log('Unmatched data found:', unmatchedData); // Debug log
-            
-            html += `<div class="unmatched-section">`;
-            html += `<h4>📋 CÁC DÒNG KHÔNG KHỚP (${unmatchedCount} dòng):</h4>`;
-            
-            // Hiển thị tất cả các dòng không khớp
-            unmatchedData.forEach((unmatched, index) => {
-                html += `<div class="unmatched-row">`;
-                html += `<h5>🔍 Dòng ${unmatched.excel_row} (Index: ${unmatched.index})</h5>`;
-                html += `<div class="row-data">`;
-                
-                // Hiển thị tất cả dữ liệu của dòng
-                if (unmatched.data) {
-                    Object.entries(unmatched.data).forEach(([key, value]) => {
-                        // Check if this is the compared column
-                        const isComparedColumn = stats.compared_columns && 
-                                               key === stats.compared_columns.split("'")[1]; // Extract column name from " 'MSSV' (File 1) vs 'MSSV' (File 2)"
-                        
-                        const highlightClass = isComparedColumn ? 'highlight-column' : '';
-                        
-                        html += `<div class="data-field ${highlightClass}">`;
-                        html += `<strong>${key}:</strong> ${value}`;
-                        if (isComparedColumn) {
-                            html += ` <span class="compared-badge">(Cột so sánh)</span>`;
-                        }
-                        html += `</div>`;
-                    });
-                }
-                
-                // Hiển thị giá trị so sánh nếu có
-                if (unmatched.compared_value) {
-                    html += `<div class="compared-value">`;
-                    html += `<strong>Giá trị so sánh:</strong> <span class="highlight-value">${unmatched.compared_value}</span>`;
-                    html += `</div>`;
-                }
-                
-                html += `</div></div>`;
-                
-                // Thêm đường phân cách giữa các dòng (trừ dòng cuối)
-                if (index < unmatchedData.length - 1) {
-                    html += `<hr class="row-divider">`;
-                }
-            });
-            
-            html += `</div>`;
-        } else if (stats.unmatched_rows > 0) {
-            html += `<div class="unmatched-section">`;
-            html += `<h4>📋 CÁC DÒNG KHÔNG KHỚP (${stats.unmatched_rows} dòng):</h4>`;
-            html += `<p>Vị trí dòng trong Excel: ${stats.unmatched_indices ? stats.unmatched_indices.join(', ') : 'Không có thông tin'}</p>`;
-            html += `</div>`;
-        } else {
-            html += `<div class="success-message">`;
-            html += `<p>🎉 Tất cả các dòng đều khớp!</p>`;
-            html += `</div>`;
-        }
-
-        if (stats.note) {
-            html += `<p class="note">📝 ${stats.note}</p>`;
-        }
-        
-        html += `</div>`;
-        
-        if (result.download_url) {
-            html += `<a href="${result.download_url}" class="download-link">📥 Tải xuống File Kết quả</a>`;
-        }
-
-        // Nút xem chi tiết tất cả các dòng không khớp (nếu có nhiều)
-        if (unmatchedCount > 5) {
-            html += `<button onclick="showAllUnmatchedRows()" class="btn-secondary" style="margin-left: 10px; margin-top: 10px;">📊 Xem chi tiết tất cả ${unmatchedCount} dòng không khớp</button>`;
-        }
-        
-        resultsDiv.innerHTML = html;
-    } else {
-        resultsDiv.innerHTML = `<div class="error-message"><h3>❌ Lỗi</h3><p>${result.error}</p></div>`;
-    }
-}
-
-// Simple compare function that uses the detailed API
-async function compareFiles() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
-        alert('Vui lòng tải lên cả 2 file trước khi so sánh');
-        return;
-    }
-
-    const compareType = document.querySelector('input[name="compare_type"]:checked').value;
-    const col1 = compareType === 'specific_columns' ? document.getElementById('col1-select').value : null;
-    const col2 = compareType === 'specific_columns' ? document.getElementById('col2-select').value : null;
-
-    const data = {
-        file1_path: uploadedFiles.file1.file_path,
-        file2_path: uploadedFiles.file2.file_path,
-        compare_type: compareType,
-        col1: col1,
-        col2: col2
-    };
-
-    try {
-        // Show loading
-        const resultsDiv = document.getElementById('results');
-        resultsDiv.innerHTML = '<div class="loading">🔄 Đang xử lý...</div>';
-
-        const response = await fetch('/api/compare-detailed', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        });
-
-        const result = await response.json();
-        console.log('API Response:', result); // Debug log
-        displayResults(result, 'So sánh');
-    } catch (error) {
-        console.error('Compare error:', error);
-        displayError(error.message);
-    }
-}
-
-// Display error
-function displayError(error) {
-    const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = `<div style="color: red;"><h3>Lỗi</h3><p>${error}</p></div>`;
-}
-
-// Tab functionality - SIMPLIFIED
-function openTab(tabName) {
-    // Hide all tab contents
-    const tabContents = document.getElementsByClassName('tab-content');
-    for (let i = 0; i < tabContents.length; i++) {
-        tabContents[i].classList.remove('active');
-    }
-
-    // Remove active class from all tab buttons
-    const tabButtons = document.getElementsByClassName('tab-button');
-    for (let i = 0; i < tabButtons.length; i++) {
-        tabButtons[i].classList.remove('active');
-    }
-
-    // Show the specific tab content and activate the button
-    document.getElementById(tabName).classList.add('active');
-    event.currentTarget.classList.add('active');
-    
-    // Clear results when switching tabs
-    document.getElementById('results').innerHTML = '<p>Chọn files và thực hiện tính năng để xem kết quả...</p>';
-}
-
-// Initialize the page with compare tab active
-document.addEventListener('DOMContentLoaded', function() {
-    // Set compare tab as active by default
-    document.getElementById('compare-tab').classList.add('active');
-    document.querySelector('.tab-button').classList.add('active');
-    
-    // Compare type change
-    document.querySelectorAll('input[name="compare_type"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            const columnSelection = document.getElementById('column-selection');
-            columnSelection.style.display = this.value === 'specific_columns' ? 'block' : 'none';
-        });
-    });
-
-    // Modal close
-    document.querySelector('.close').addEventListener('click', function() {
-        document.getElementById('join-modal').style.display = 'none';
-    });
-
-    // Close modal when clicking outside
-    window.addEventListener('click', function(event) {
-        const modal = document.getElementById('join-modal');
-        if (event.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
-});
-
-// File upload function (unchanged)
-async function uploadFile(fileNumber) {
-    const fileInput = document.getElementById(`file${fileNumber}`);
-    const fileInfo = document.getElementById(`file${fileNumber}-info`);
-    
-    if (!fileInput.files[0]) {
-        alert('Vui lòng chọn file trước khi tải lên');
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    try {
-        // Try normal upload first
-        let response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
-
-        let result = await response.json();
-
-        // If normal upload fails, try simple upload
-        if (!result.success) {
-            console.log('Normal upload failed, trying simple upload...');
-            
-            formData.append('file', fileInput.files[0]);
-            response = await fetch('/api/simple-upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            result = await response.json();
-        }
-
-        if (result.success) {
-            uploadedFiles[`file${fileNumber}`] = result;
-            fileInfo.innerHTML = `
-                <strong>File:</strong> ${result.filename}<br>
-                <strong>Số dòng:</strong> ${result.rows}<br>
-                <strong>Số cột:</strong> ${result.columns.length}<br>
-                <strong>Columns:</strong> ${result.columns.slice(0, 5).join(', ')}${result.columns.length > 5 ? '...' : ''}
-            `;
-            
-            // Update column selects
-            updateColumnSelects();
-        } else {
-            fileInfo.innerHTML = `<span style="color: red;">Lỗi: ${result.error}</span>`;
-        }
-    } catch (error) {
-        fileInfo.innerHTML = `<span style="color: red;">Lỗi kết nối: ${error.message}</span>`;
-        console.error('Upload error:', error);
-    }
-}
-
-// Update column selection dropdowns
-function updateColumnSelects() {
-    const col1Select = document.getElementById('col1-select');
-    const col2Select = document.getElementById('col2-select');
-    
-    // Clear existing options
-    col1Select.innerHTML = '';
-    col2Select.innerHTML = '';
-    
-    if (uploadedFiles.file1 && uploadedFiles.file1.columns) {
-        uploadedFiles.file1.columns.forEach(col => {
-            const option = document.createElement('option');
-            option.value = col;
-            option.textContent = col;
-            col1Select.appendChild(option);
-        });
-    }
-    
-    if (uploadedFiles.file2 && uploadedFiles.file2.columns) {
-        uploadedFiles.file2.columns.forEach(col => {
-            const option = document.createElement('option');
-            option.value = col;
-            option.textContent = col;
-            col2Select.appendChild(option);
-        });
-    }
-}
-
-// Compare files function
-async function compareFiles() {
-    if (!uploadedFiles.file1 || !uploadedFiles.file2) {
-        alert('Vui lòng tải lên cả 2 file trước khi so sánh');
-        return;
-    }
-
-    const compareType = document.querySelector('input[name="compare_type"]:checked').value;
-    const col1 = compareType === 'specific_columns' ? document.getElementById('col1-select').value : null;
-    const col2 = compareType === 'specific_columns' ? document.getElementById('col2-select').value : null;
-
-    const data = {
-        file1_path: uploadedFiles.file1.file_path,
-        file2_path: uploadedFiles.file2.file_path,
-        compare_type: compareType,
-        col1: col1,
-        col2: col2
-    };
-
-    try {
-        // Show loading
-        const resultsDiv = document.getElementById('results');
-        resultsDiv.innerHTML = '<div class="loading">🔄 Đang xử lý...</div>';
-
-        const response = await fetch('/api/compare-detailed', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        });
-
-        const result = await response.json();
-        console.log('API Response:', result);
-        displayResults(result, 'So sánh');
-    } catch (error) {
-        console.error('Compare error:', error);
-        displayError(error.message);
-    }
-}
-
-// Merge Columns Variables
-let mergeFile = null;
-let currentSeparator = " ";
-let currentConfigId = null;
-let currentMergeConfigs = [];
+// ========== MERGE FUNCTIONS ==========
 
 // Upload file for merge tab
 async function uploadMergeFile() {
@@ -785,7 +479,6 @@ async function uploadMergeFile() {
     formData.append('file', fileInput.files[0]);
 
     try {
-        // Show loading
         fileInfo.innerHTML = '<div class="loading">🔄 Đang tải lên...</div>';
 
         let response = await fetch('/api/upload', {
@@ -795,11 +488,7 @@ async function uploadMergeFile() {
 
         let result = await response.json();
 
-        // If normal upload fails, try simple upload
         if (!result.success) {
-            console.log('Normal upload failed, trying simple upload...');
-            
-            // Create new FormData for retry
             const retryFormData = new FormData();
             retryFormData.append('file', fileInput.files[0]);
             
@@ -823,10 +512,7 @@ async function uploadMergeFile() {
                 </div>
             `;
             
-            // Show merge configuration section
             document.getElementById('merge-configuration').style.display = 'block';
-            
-            // Initialize first merge configuration
             addMergeConfig();
             
         } else {
@@ -837,7 +523,6 @@ async function uploadMergeFile() {
         fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi kết nối:</strong> ${error.message}</div>`;
     }
 }
-
 
 // Add new merge configuration
 function addMergeConfig() {
@@ -1188,8 +873,7 @@ function displayMergeResults(result) {
     }
 }
 
-// Split Rows Variables
-let splitFile = null;
+// ========== SPLIT FUNCTIONS ==========
 
 // Upload file for split tab
 async function uploadSplitFile() {
@@ -1205,7 +889,6 @@ async function uploadSplitFile() {
     formData.append('file', fileInput.files[0]);
 
     try {
-        // Show loading
         fileInfo.innerHTML = '<div class="loading">🔄 Đang tải lên...</div>';
 
         let response = await fetch('/api/upload', {
@@ -1215,7 +898,6 @@ async function uploadSplitFile() {
 
         let result = await response.json();
 
-        // If normal upload fails, try simple upload
         if (!result.success) {
             const retryFormData = new FormData();
             retryFormData.append('file', fileInput.files[0]);
@@ -1240,10 +922,7 @@ async function uploadSplitFile() {
                 </div>
             `;
             
-            // Show split configuration section
             document.getElementById('split-configuration').style.display = 'block';
-            
-            // Populate columns selection
             populateSplitColumns(result.columns);
             
         } else {
@@ -1254,7 +933,6 @@ async function uploadSplitFile() {
         fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi kết nối:</strong> ${error.message}</div>`;
     }
 }
-
 // Populate columns for split configuration
 function populateSplitColumns(columns) {
     const idColumnsDiv = document.getElementById('id-columns-selection');
@@ -1268,7 +946,7 @@ function populateSplitColumns(columns) {
     columns.forEach(column => {
         const checkboxHtml = `
             <label class="column-checkbox">
-                <input type="checkbox" value="${column}" onchange="toggleColumnSelection(this, '${column}')">
+                <input type="checkbox" value="${column}" onchange="toggleSplitColumnSelection(this, '${column}')">
                 ${column}
             </label>
         `;
@@ -1278,8 +956,8 @@ function populateSplitColumns(columns) {
     });
 }
 
-// Toggle column selection between ID and Value
-function toggleColumnSelection(checkbox, columnName) {
+// Toggle column selection between ID and Value for split
+function toggleSplitColumnSelection(checkbox, columnName) {
     const isChecked = checkbox.checked;
     const parent = checkbox.parentElement;
     
@@ -1300,6 +978,13 @@ function toggleColumnSelection(checkbox, columnName) {
     }
 }
 
+// Get selected columns for ID or Value in split
+function getSelectedSplitColumns(type) {
+    const selector = type === 'id' ? '#id-columns-selection' : '#value-columns-selection';
+    const checkboxes = document.querySelectorAll(`${selector} input[type="checkbox"]:checked`);
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
 // Preview split result
 async function previewSplit() {
     if (!splitFile) {
@@ -1307,8 +992,8 @@ async function previewSplit() {
         return;
     }
 
-    const idColumns = getSelectedColumns('id');
-    const valueColumns = getSelectedColumns('value');
+    const idColumns = getSelectedSplitColumns('id');
+    const valueColumns = getSelectedSplitColumns('value');
     const varName = document.getElementById('var-name').value || 'Variable';
     const valueName = document.getElementById('value-name').value || 'Value';
 
@@ -1349,13 +1034,6 @@ async function previewSplit() {
         const previewDiv = document.getElementById('split-preview');
         previewDiv.innerHTML = `<div class="error-message">❌ Lỗi xem trước: ${error.message}</div>`;
     }
-}
-
-// Get selected columns for ID or Value
-function getSelectedColumns(type) {
-    const selector = type === 'id' ? '#id-columns-selection' : '#value-columns-selection';
-    const checkboxes = document.querySelectorAll(`${selector} input[type="checkbox"]:checked`);
-    return Array.from(checkboxes).map(cb => cb.value);
 }
 
 // Display split preview
@@ -1439,8 +1117,8 @@ async function performSplit() {
         return;
     }
 
-    const idColumns = getSelectedColumns('id');
-    const valueColumns = getSelectedColumns('value');
+    const idColumns = getSelectedSplitColumns('id');
+    const valueColumns = getSelectedSplitColumns('value');
     const varName = document.getElementById('var-name').value || 'Variable';
     const valueName = document.getElementById('value-name').value || 'Value';
 
@@ -1515,11 +1193,7 @@ function displaySplitResults(result) {
         resultsDiv.innerHTML = `<div class="error-message"><h3>❌ Lỗi Tách Dòng</h3><p>${result.error}</p></div>`;
     }
 }
-
-
-// Duplicate Finder Variables
-let duplicateFile = null;
-let currentMethod = null;
+// ========== DUPLICATE FUNCTIONS ==========
 
 // Upload file for duplicate tab
 async function uploadDuplicateFile() {
@@ -1568,11 +1242,7 @@ async function uploadDuplicateFile() {
                 </div>
             `;
             
-            // Show duplicate configuration section
             document.getElementById('duplicate-configuration').style.display = 'block';
-            
-            // Populate columns for value method NGAY KHI UPLOAD
-            console.log('Upload successful, populating columns...');
             populateDuplicateColumns(result.columns);
             
         } else {
@@ -1583,7 +1253,6 @@ async function uploadDuplicateFile() {
         fileInfo.innerHTML = `<div style="color: red;"><strong>❌ Lỗi kết nối:</strong> ${error.message}</div>`;
     }
 }
-
 // Populate columns for duplicate value method - SỬA LẠI
 function populateDuplicateColumns(columns) {
     console.log('=== populateDuplicateColumns START ===');
@@ -1962,46 +1631,95 @@ function displayDuplicateRowsResults(result) {
         resultsDiv.innerHTML = `<div class="error-message"><h3>❌ Lỗi Tìm Dòng Trùng Lặp</h3><p>${result.error}</p></div>`;
     }
 }
+// ========== MODAL FUNCTIONS ==========
 
-// Hàm debug để kiểm tra trạng thái
-function debugDuplicateFinder() {
-    console.log('=== DUPLICATE FINDER DEBUG ===');
-    console.log('duplicateFile:', duplicateFile);
-    console.log('currentMethod:', currentMethod);
-    
-    const methodContent = document.getElementById('method-values-content');
-    console.log('method-values-content:', methodContent);
-    console.log('display style:', methodContent.style.display);
-    
-    const columnsDiv = document.getElementById('value-columns-selection');
-    console.log('value-columns-selection:', columnsDiv);
-    console.log('children count:', columnsDiv.children.length);
-    
-    console.log('=== END DEBUG ===');
+function closeJoinModal() {
+    document.getElementById('join-modal').style.display = 'none';
 }
 
+function closeSeparatorModal() {
+    document.getElementById('separator-modal').style.display = 'none';
+}
 
-// Hàm debug nhanh - gọi từ console browser
-function debugDuplicate() {
-    console.log('=== DUPLICATE DEBUG ===');
-    console.log('duplicateFile:', duplicateFile);
-    console.log('duplicateFile.columns:', duplicateFile ? duplicateFile.columns : 'NO FILE');
+function showSeparatorModal(configId) {
+    currentConfigId = configId;
+    document.getElementById('separator-modal').style.display = 'block';
+}
+
+function saveSeparator() {
+    const customSep = document.getElementById('custom-separator').value;
+    const selectedSep = document.querySelector('input[name="separator"]:checked').value;
     
-    const columnsDiv = document.getElementById('value-columns-selection');
-    console.log('value-columns-selection element:', columnsDiv);
-    console.log('children count:', columnsDiv ? columnsDiv.children.length : 'NO ELEMENT');
+    currentSeparator = selectedSep === 'custom' ? customSep : selectedSep;
     
-    // Thử populate ngay lập tức
-    if (duplicateFile && duplicateFile.columns) {
-        console.log('Attempting to populate columns now...');
-        populateDuplicateColumns(duplicateFile.columns);
+    if (currentConfigId) {
+        const displayElement = document.getElementById(`separator-display-${currentConfigId}`);
+        if (displayElement) {
+            displayElement.textContent = currentSeparator === ' ' ? 'Khoảng trắng' : currentSeparator;
+        }
     }
     
-    console.log('=== END DEBUG ===');
+    closeSeparatorModal();
+    currentConfigId = null;
 }
 
-// Display results function (keep your existing displayResults function)
-// Join functions (keep your existing join functions)
+// ========== UTILITY FUNCTIONS ==========
 
-// Rest of your existing JavaScript code remains the same...
-// (displayResults, showJoinColumnSelection, addJoinColumnPair, removeJoinColumnPair, saveJoinColumns, performJoin, displayJoinResults functions)
+function displayError(error) {
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = `<div style="color: red;"><h3>Lỗi</h3><p>${error}</p></div>`;
+}
+
+// Tab functionality
+function openTab(tabName) {
+    // Hide all tab contents
+    const tabContents = document.getElementsByClassName('tab-content');
+    for (let i = 0; i < tabContents.length; i++) {
+        tabContents[i].classList.remove('active');
+    }
+
+    // Remove active class from all tab buttons
+    const tabButtons = document.getElementsByClassName('tab-button');
+    for (let i = 0; i < tabButtons.length; i++) {
+        tabButtons[i].classList.remove('active');
+    }
+
+    // Show the specific tab content and activate the button
+    document.getElementById(tabName).classList.add('active');
+    event.currentTarget.classList.add('active');
+    
+    // Clear results when switching tabs
+    document.getElementById('results').innerHTML = '<p>Chọn files và thực hiện tính năng để xem kết quả...</p>';
+}
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Page loaded - initializing...');
+    
+    // Set compare tab as active by default
+    document.getElementById('compare-tab').classList.add('active');
+    document.querySelector('.tab-button').classList.add('active');
+    
+    // Compare type change
+    document.querySelectorAll('input[name="compare_type"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const columnSelection = document.getElementById('column-selection');
+            columnSelection.style.display = this.value === 'specific_columns' ? 'block' : 'none';
+        });
+    });
+
+    // Modal close when clicking outside
+    window.addEventListener('click', function(event) {
+        const joinModal = document.getElementById('join-modal');
+        const separatorModal = document.getElementById('separator-modal');
+        
+        if (event.target === joinModal) {
+            closeJoinModal();
+        }
+        if (event.target === separatorModal) {
+            closeSeparatorModal();
+        }
+    });
+    
+    console.log('Initialization complete');
+});
